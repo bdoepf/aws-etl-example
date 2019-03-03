@@ -1,0 +1,31 @@
+import com.amazonaws.services.glue.ChoiceOption
+import com.amazonaws.services.glue.GlueContext
+import com.amazonaws.services.glue.MappingSpec
+import com.amazonaws.services.glue.ResolveSpec
+import com.amazonaws.services.glue.errors.CallSite
+import com.amazonaws.services.glue.util.GlueArgParser
+import com.amazonaws.services.glue.util.Job
+import com.amazonaws.services.glue.util.JsonOptions
+import org.apache.spark.SparkContext
+import scala.collection.JavaConverters._
+
+object GlueApp {
+  def main(sysArgs: Array[String]) {
+    val spark: SparkContext = new SparkContext()
+    val glueContext: GlueContext = new GlueContext(spark)
+    val args = GlueArgParser.getResolvedOptions(sysArgs, Seq("JOB_NAME").toArray)
+
+    Job.init(args("JOB_NAME"), glueContext, args.asJava)
+
+    val source = glueContext.getCatalogSource(database = "${database_name}", tableName = "${source_table_name}", redshiftTmpDir = "", transformationContext = "source").getDynamicFrame()
+
+    val applymapping = source.applyMapping(mappings = Seq(("id", "long", "id", "long"), ("description", "string", "description", "string")), caseSensitive = false, transformationContext = "applymapping")
+
+    val resolvechoice = applymapping.resolveChoice(choiceOption = Some(ChoiceOption("make_struct")), transformationContext = "resolvechoice")
+
+    val dropnullfields = resolvechoice.dropNulls(transformationContext = "dropnullfields")
+
+    val sink = glueContext.getSinkWithFormat(connectionType = "s3", options = JsonOptions("""{"path": "s3://${bucket}/glue/item/", "partitionKeys": ["id"]}"""), transformationContext = "sink", format = "parquet").writeDynamicFrame(dropnullfields)
+    Job.commit()
+  }
+}

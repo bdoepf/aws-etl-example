@@ -1,0 +1,5 @@
+.idea
+.terraform
+script.scala
+terraform.tfstate
+terraform.tfstate.backup
